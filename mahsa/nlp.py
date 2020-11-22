@@ -4,10 +4,10 @@ import spacy
 from spacy import displacy
 from collections import Counter
 import torch
-import torchvision
+# import torchvision
 import torch.nn as nn
-import numpy as np
-import torchvision.transforms as transforms
+import torch.utils.data
+# import torchvision.transforms as transforms
 
 nlp = spacy.load("en_core_web_sm")
 
@@ -46,7 +46,7 @@ def possible_relations(data):
     relation_types = {}
     index = -1
     for i in range(len(data)-1):
-        dict_key = data[i].split("\n")[1].split("(")[0]
+        dict_key = data[i].split("\n")[1].strip()
         if relation_types.get(dict_key) is None:
             index += 1
             relation_types[dict_key] = index
@@ -56,7 +56,7 @@ def possible_relations(data):
 def data_relation_extract(data, relation_types):
     y = np.zeros((len(data)-1, 1))
     for j in range(len(data)-1):
-        dict_key = data[j].split("\n")[1].split("(")[0]
+        dict_key = data[j].split("\n")[1].strip()
         y[j] = relation_types[dict_key]
     return y
 
@@ -69,18 +69,18 @@ def et_ed_sl_em(data):
     e2S_type = np.zeros((len(data)-1, len(entity_types)))
     e1_e2_distance = np.zeros((len(data)-1, 1))
     sentence_length = np.zeros((len(data)-1, 1))
-    e1_embeding = None
-    e2_embeding = None
+    e1_embeding = []
+    e2_embeding = []
     for i in range(len(data)-1):
         sentence_length[i] = len(data[i])
         e1_search = re.search(r'<e1>[\W\S.,`\':$]+</e1>', data[i])
         e1 = e1_search.group()
         e1_location = e1_search.span()[1]
-        e11 = re.sub(r'</e1>|<e1>', "", e1)
+        e11 = re.sub(r'</e1>|<e1>', "", e1).strip()
         e2_search = re.search(r'<e2>[\W\S.,`\':$]+</e2>', data[i])
         e2 = e2_search.group()
         e2_location = e2_search.span()[0]
-        e22 = re.sub(r'</e2>|<e2>', "", e2)
+        e22 = re.sub(r'</e2>|<e2>', "", e2).strip()
 
         e1_e2_distance[i] = e2_location - e1_location
         doc = nlp(e11+','+e22)
@@ -96,27 +96,19 @@ def et_ed_sl_em(data):
         if sum(e2S_type[i]) == 0:
             e2S_type[i, entity_types['UNKNOWN']] = 1
 
-        word_emb = np.zeros((96, 1))
-        word_emb = word_emb[:, 0]
+        word_emb = np.zeros((96,))
         tokens = nlp(e11)
         for token in tokens:
             word_emb = word_emb+token.vector
-        if e1_embeding is None:
-            e1_embeding = word_emb
-        else:
-            e1_embeding = np.vstack((e1_embeding, word_emb))
+        e1_embeding.append(word_emb)
 
-        word_emb_e2 = np.zeros((96, 1))
-        word_emb_e2 = word_emb_e2[:, 0]
+        word_emb_e2 = np.zeros((96,))
         tokense2 = nlp(e22)
         for tokene2 in tokense2:
             word_emb_e2 = word_emb_e2+tokene2.vector
-        if e2_embeding is None:
-            e2_embeding = word_emb_e2
-        else:
-            e2_embeding = np.vstack((e2_embeding, word_emb_e2))
+        e2_embeding.append(word_emb_e2)
 
-    return e1S_type, e2S_type, e1_e2_distance, sentence_length, e1_embeding,e2_embeding
+    return e1S_type, e2S_type, e1_e2_distance, sentence_length, np.array(e1_embeding), np.array(e2_embeding)
 
 # will extract the propesitions between e1 and e2 and will extract the tokens between
 #  e1,e2 entities and represent them using word embeding
@@ -127,15 +119,11 @@ def prep_emb(data):
     POS = {"PUNCT":0,"ADJ":1,"CCONJ":2,"NUM":3,"DET":4,"PRON":5,"ADP":6,"VERB":7,"NOUN":8,"PROPN":9,"ADV":10,"AUX":11,"other":12}
     POS_beetween_e1e2 = np.zeros((len(data)-1, len(POS)))
     sentence_prep = np.zeros((len(data)-1, len(prep)))
-    e1_e2_embeding = None
+    e1_e2_embeding = []
     for i in range(len(data)-1):
-        data_between_entities = re.search(
-            r'</e1>[\W\S.,`\':$<>/]+<e2>', data[i]).group()
-        data_between_entities2 = re.sub(
-            r'</e1>\s|\s<e2>', "", data_between_entities)
-        doc = nlp(data_between_entities2)
-        word_emb_e1_e2 = np.zeros((96, 1))
-        word_emb_e1_e2 = word_emb_e1_e2[:, 0]
+        data_between_entities = re.search('</e1>(.*)<e2>', data[i]).group(1).strip()
+        doc = nlp(data_between_entities)
+        word_emb_e1_e2 = np.zeros((96,))
         for token in doc:
             if token.tag_ == "IN":
                 if prep.get(token.text) is not None:
@@ -147,12 +135,9 @@ def prep_emb(data):
                 POS_beetween_e1e2[i,POS[token.pos_]] = 1
 
             word_emb_e1_e2 = word_emb_e1_e2+token.vector
-        if e1_e2_embeding is None:
-            e1_e2_embeding = word_emb_e1_e2
-        else:
-            e1_e2_embeding = np.vstack((e1_e2_embeding, word_emb_e1_e2))
-        
-    return sentence_prep , e1_e2_embeding,POS_beetween_e1e2
+        e1_e2_embeding.append(word_emb_e1_e2)
+
+    return sentence_prep , np.array(e1_e2_embeding), POS_beetween_e1e2
 
 # Reading the train dataset
 #file_name = "train.txt"
@@ -165,7 +150,7 @@ splited_data = corpus.split("\n\n\n")
 # train set feature extraction :
 train_prepositions, word_emb_e1_e2 , POS_beetween_e1e2 = prep_emb(splited_data)
 relations_list = possible_relations(splited_data)
-yTrain = data_relation_extract(splited_data, relations_list) 
+yTrain = data_relation_extract(splited_data, relations_list)
 e1Type, e2Type, e1e2distance, train_sentence_length, e1_emb,e2_emb = et_ed_sl_em(splited_data)
 features = np.concatenate((e1Type, e2Type, e1e2distance, train_prepositions, e1_emb,e2_emb,word_emb_e1_e2,POS_beetween_e1e2), axis=1)
 
