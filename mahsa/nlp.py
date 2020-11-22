@@ -213,32 +213,34 @@ def build_and_train_model(X_features_train, Y_train, num_classes):
     return model
 
 
+def test_model(model, X_features_test, Y_test):
+    test_loader = torch.utils.data.DataLoader(  # Reading the test set features in batches
+        dataset=CustomDataset(X_features_test, Y_test),
+        batch_size=32,
+        shuffle=False)
+
+    with torch.no_grad():
+        correct = 0
+        total = 0
+        for xTest, yTest in test_loader:
+            xTest = xTest.to(torch.float32)
+            yTest = yTest.to(torch.long)
+            outputs_test = model(xTest)
+            _, predicted = torch.max(outputs_test.data, 1)
+            total += yTest.size(0)
+            correct += (predicted == yTest[:, 0]).sum().item()
+
+        print('Accuracy of the network on the 10000 test images: {} %'.format(
+            100 * correct / total))
+
+
 relations_list = get_relation_list("semeval_train.txt")
 
-# train or load model
 X_features_train, Y_train = get_features("semeval_train.txt", relations_list)
+X_features_test, Y_test = get_features("semeval_test.txt", relations_list)
+
 model = build_and_train_model(X_features_train, Y_train, num_classes=len(relations_list))
 torch.save(model, 'trained-model.pt')
 # model = torch.load('trained-model.pt')
 
-# test model
-X_features_test, Y_test = get_features("semeval_test.txt", relations_list)
-test_loader = torch.utils.data.DataLoader(  # Reading the test set features in batches
-    dataset=CustomDataset(X_features_test, Y_test),
-    batch_size=32,
-    shuffle=False)
-
-# Test the model
-with torch.no_grad():
-    correct = 0
-    total = 0
-    for xTest, yTest in test_loader:
-        xTest = xTest.to(torch.float32)
-        yTest = yTest.to(torch.long)
-        outputs_test = model(xTest)
-        _, predicted = torch.max(outputs_test.data, 1)
-        total += yTest.size(0)
-        correct += (predicted == yTest[:, 0]).sum().item()
-
-    print('Accuracy of the network on the 10000 test images: {} %'.format(
-        100 * correct / total))
+test_model(model, X_features_test, Y_test)
