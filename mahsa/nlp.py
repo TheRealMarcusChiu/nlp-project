@@ -1,15 +1,12 @@
 import re
 import numpy as np
 import spacy
-from spacy import displacy
-from collections import Counter
 import torch
-# import torchvision
 import torch.nn as nn
 import torch.utils.data
-# import torchvision.transforms as transforms
 
 nlp = spacy.load("en_core_web_sm")
+
 
 # defining the neural network model: 3 layers fully connected
 class NeuralNet(nn.Module):
@@ -29,6 +26,7 @@ class NeuralNet(nn.Module):
         out = self.fc3(out)
         return out
 
+
 # Data loader will call CustomDataset to get the data in batches of size 64 or 32 or 16
 class CustomDataset(torch.utils.data.Dataset):
     def __init__(self, x_train, y_train):
@@ -41,37 +39,42 @@ class CustomDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.X)
 
+
 # possible_relations will extract all the distinct relations that exist in data set
 def possible_relations(data):
     relation_types = {}
     index = -1
-    for i in range(len(data)-1):
+    for i in range(len(data) - 1):
         dict_key = data[i].split("\n")[1].strip()
         if relation_types.get(dict_key) is None:
             index += 1
             relation_types[dict_key] = index
     return relation_types
 
+
 # data_relation_extract will return the data's relation
 def data_relation_extract(data, relation_types):
-    y = np.zeros((len(data)-1, 1))
-    for j in range(len(data)-1):
+    y = np.zeros((len(data) - 1, 1))
+    for j in range(len(data) - 1):
         dict_key = data[j].split("\n")[1].strip()
         y[j] = relation_types[dict_key]
     return y
 
+
 # et_ed_sl_em will extract different features such as : e1 type, e2 type, the count of letters exists between e1 and e2,
 # sentence length, e1 word embedding, e2 word embedding.
 def et_ed_sl_em(data):
-    entity_types = {'PERSON': 0, 'NORP': 1, 'FAC': 2, 'ORG': 3, 'GPE': 4, 'LOC': 5, 'PRODUCT': 6, 'EVENT': 7, 'WORK_OF_ART': 8, 'LAW': 9,
-                    'LANGUAGE': 10, 'DATE': 11, 'TIME': 12, 'PERCENT': 13, 'MONEY': 14, 'QUANTITY': 15, 'ORDINAL': 16, 'CARDINAL': 17, 'UNKNOWN': 18}
-    e1S_type = np.zeros((len(data)-1, len(entity_types)))
-    e2S_type = np.zeros((len(data)-1, len(entity_types)))
-    e1_e2_distance = np.zeros((len(data)-1, 1))
-    sentence_length = np.zeros((len(data)-1, 1))
+    entity_types = {'PERSON': 0, 'NORP': 1, 'FAC': 2, 'ORG': 3, 'GPE': 4, 'LOC': 5, 'PRODUCT': 6, 'EVENT': 7,
+                    'WORK_OF_ART': 8, 'LAW': 9,
+                    'LANGUAGE': 10, 'DATE': 11, 'TIME': 12, 'PERCENT': 13, 'MONEY': 14, 'QUANTITY': 15, 'ORDINAL': 16,
+                    'CARDINAL': 17, 'UNKNOWN': 18}
+    e1S_type = np.zeros((len(data) - 1, len(entity_types)))
+    e2S_type = np.zeros((len(data) - 1, len(entity_types)))
+    e1_e2_distance = np.zeros((len(data) - 1, 1))
+    sentence_length = np.zeros((len(data) - 1, 1))
     e1_embeding = []
     e2_embeding = []
-    for i in range(len(data)-1):
+    for i in range(len(data) - 1):
         sentence_length[i] = len(data[i])
         e1_search = re.search(r'<e1>[\W\S.,`\':$]+</e1>', data[i])
         e1 = e1_search.group()
@@ -83,7 +86,7 @@ def et_ed_sl_em(data):
         e22 = re.sub(r'</e2>|<e2>', "", e2).strip()
 
         e1_e2_distance[i] = e2_location - e1_location
-        doc = nlp(e11+','+e22)
+        doc = nlp(e11 + ',' + e22)
         for ent in doc.ents:
             if ent.text == e11:
                 e1_type = ent.label_
@@ -99,28 +102,33 @@ def et_ed_sl_em(data):
         word_emb = np.zeros((96,))
         tokens = nlp(e11)
         for token in tokens:
-            word_emb = word_emb+token.vector
+            word_emb = word_emb + token.vector
         e1_embeding.append(word_emb)
 
         word_emb_e2 = np.zeros((96,))
         tokense2 = nlp(e22)
         for tokene2 in tokense2:
-            word_emb_e2 = word_emb_e2+tokene2.vector
+            word_emb_e2 = word_emb_e2 + tokene2.vector
         e2_embeding.append(word_emb_e2)
 
     return e1S_type, e2S_type, e1_e2_distance, sentence_length, np.array(e1_embeding), np.array(e2_embeding)
 
+
 # will extract the propesitions between e1 and e2 and will extract the tokens between
 #  e1,e2 entities and represent them using word embeding
 def prep_emb(data):
-    prep = {"with": 0, "at": 1, "from": 2, "into": 3, "during": 4, "including": 5, "until": 6, "against": 7, "among": 8, "throughout": 9,
-            "of": 10, "to": 11, "in": 12, "for": 13, "on": 14, "by": 15, "despite": 16, "towards": 17, "upon": 18, "about": 19, "like": 20,
-            "through": 21, "over": 22, "before": 23, "between": 24, "after": 25, "since": 26, "without": 27, "under": 28, "around": 29, "near": 30}
-    POS = {"PUNCT":0,"ADJ":1,"CCONJ":2,"NUM":3,"DET":4,"PRON":5,"ADP":6,"VERB":7,"NOUN":8,"PROPN":9,"ADV":10,"AUX":11,"other":12}
-    POS_beetween_e1e2 = np.zeros((len(data)-1, len(POS)))
-    sentence_prep = np.zeros((len(data)-1, len(prep)))
+    prep = {"with": 0, "at": 1, "from": 2, "into": 3, "during": 4, "including": 5, "until": 6, "against": 7, "among": 8,
+            "throughout": 9,
+            "of": 10, "to": 11, "in": 12, "for": 13, "on": 14, "by": 15, "despite": 16, "towards": 17, "upon": 18,
+            "about": 19, "like": 20,
+            "through": 21, "over": 22, "before": 23, "between": 24, "after": 25, "since": 26, "without": 27,
+            "under": 28, "around": 29, "near": 30}
+    POS = {"PUNCT": 0, "ADJ": 1, "CCONJ": 2, "NUM": 3, "DET": 4, "PRON": 5, "ADP": 6, "VERB": 7, "NOUN": 8, "PROPN": 9,
+           "ADV": 10, "AUX": 11, "other": 12}
+    POS_beetween_e1e2 = np.zeros((len(data) - 1, len(POS)))
+    sentence_prep = np.zeros((len(data) - 1, len(prep)))
     e1_e2_embeding = []
-    for i in range(len(data)-1):
+    for i in range(len(data) - 1):
         data_between_entities = re.search('</e1>(.*)<e2>', data[i]).group(1).strip()
         doc = nlp(data_between_entities)
         word_emb_e1_e2 = np.zeros((96,))
@@ -130,89 +138,95 @@ def prep_emb(data):
                     sentence_prep[i, prep[token.text]] = 1
 
             if POS.get(token.pos_) is None:
-                POS_beetween_e1e2[i,POS["other"]]=1
+                POS_beetween_e1e2[i, POS["other"]] = 1
             else:
-                POS_beetween_e1e2[i,POS[token.pos_]] = 1
+                POS_beetween_e1e2[i, POS[token.pos_]] = 1
 
-            word_emb_e1_e2 = word_emb_e1_e2+token.vector
+            word_emb_e1_e2 = word_emb_e1_e2 + token.vector
         e1_e2_embeding.append(word_emb_e1_e2)
 
-    return sentence_prep , np.array(e1_e2_embeding), POS_beetween_e1e2
+    return sentence_prep, np.array(e1_e2_embeding), POS_beetween_e1e2
 
-# Reading the train dataset
-#file_name = "train.txt"
-file_name = "semeval_train.txt"
-file_ = open(file_name)
-corpus = file_.read()
-file_.close()
-splited_data = corpus.split("\n\n\n")
 
-# train set feature extraction :
-train_prepositions, word_emb_e1_e2 , POS_beetween_e1e2 = prep_emb(splited_data)
-relations_list = possible_relations(splited_data)
-yTrain = data_relation_extract(splited_data, relations_list)
-e1Type, e2Type, e1e2distance, train_sentence_length, e1_emb,e2_emb = et_ed_sl_em(splited_data)
-features = np.concatenate((e1Type, e2Type, e1e2distance, train_prepositions, e1_emb,e2_emb,word_emb_e1_e2,POS_beetween_e1e2), axis=1)
+def get_relation_list(file_name):
+    file_ = open(file_name)
+    corpus = file_.read()
+    file_.close()
+    splited_data = corpus.split("\n\n\n")
+    return possible_relations(splited_data)
 
-#Reading the test dataset
-#file_name_test = "test.txt"
-file_name_test = "semeval_test.txt"
-file_test = open(file_name_test)
-corpus_test = file_test.read()
-file_test.close()
-splited_data_test = corpus_test.split("\n\n\n")
 
-# test set feature extraction
-Y_test = data_relation_extract(splited_data_test, relations_list)
-test_prepositions , test_word_emb_e1_e2,test_POS_beetween_e1e2 = prep_emb(splited_data_test)
-e1Type_test, e2Type_test, e1e2distance_test, test_sentence_length, e1_test_emb,e2_test_emb = et_ed_sl_em(splited_data_test)
-X_test = np.concatenate((e1Type_test, e2Type_test,e1e2distance_test, test_prepositions, e1_test_emb,e2_test_emb,test_word_emb_e1_e2,test_POS_beetween_e1e2), axis=1)
+def get_features(file_name, relations_list):
+    file_ = open(file_name)
+    corpus = file_.read()
+    file_.close()
+    splited_data = corpus.split("\n\n\n")
 
-# Hyper parameters
-input_size = features.shape[1]
-hidden_size = 500
-hidden_size2 = 300
-num_classes = len(relations_list)
-num_epochs = 80
-batch_size = 32
-learning_rate = 0.001
+    ys = data_relation_extract(splited_data, relations_list)
+    prepositions, word_emb_e1_e2, POS_beetween_e1e2 = prep_emb(splited_data)
+    e1Type, e2Type, e1e2distance, sentence_length, e1_emb, e2_emb = et_ed_sl_em(splited_data)
+    return np.concatenate(
+        (e1Type, e2Type, e1e2distance, prepositions, e1_emb, e2_emb, word_emb_e1_e2, POS_beetween_e1e2),
+        axis=1), ys
 
-# Reading the training set features in baches
-custom_dataset = CustomDataset(features, yTrain)
-train_loader = torch.utils.data.DataLoader(
-    dataset=custom_dataset, batch_size=64, shuffle=True)
 
-# Reading the test set features in baches
-custom_dataset_test = CustomDataset(X_test, Y_test)
-test_loader = torch.utils.data.DataLoader(
-    dataset=custom_dataset_test, batch_size=batch_size, shuffle=False)
+def build_and_train_model(X_features_train, Y_train, num_classes):
+    input_size = X_features_train.shape[1]
 
-# Creating the neural network model
-model = NeuralNet(input_size, hidden_size, hidden_size2, num_classes)
+    # Hyper parameters
+    hidden_size = 500
+    hidden_size2 = 300
+    num_epochs = 80
+    batch_size = 64
+    learning_rate = 0.001
 
-# Loss and optimizer
-criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    train_loader = torch.utils.data.DataLoader(  # Reading the training set features in batches
+        dataset=CustomDataset(X_features_train, Y_train),
+        batch_size=batch_size,
+        shuffle=True)
 
-# Train the model
-total_step = len(train_loader)
-for epoch in range(num_epochs):
-    for i, (X, Y) in enumerate(train_loader):
-        X = X.to(torch.float32)
-        Y = Y.to(torch.long)
-        # Forward pass
-        outputs = model(X)
-        loss = criterion(outputs,  Y[:, 0])
+    # Creating the neural network model
+    model = NeuralNet(input_size, hidden_size, hidden_size2, num_classes)
 
-        # Backward and optimize
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+    # Loss and optimizer
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-        if (i+1) % 100 == 0:
-            print('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}'
-                  .format(epoch+1, num_epochs, i+1, total_step, loss.item()))
+    # Train the model
+    total_step = len(train_loader)
+    for epoch in range(num_epochs):
+        for i, (X, Y) in enumerate(train_loader):
+            X = X.to(torch.float32)
+            Y = Y.to(torch.long)
+            # Forward pass
+            outputs = model(X)
+            loss = criterion(outputs, Y[:, 0])
 
+            # Backward and optimize
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            if (i + 1) % 100 == 0:
+                print('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}'
+                      .format(epoch + 1, num_epochs, i + 1, total_step, loss.item()))
+    return model
+
+
+relations_list = get_relation_list("semeval_train.txt")
+
+# train or load model
+X_features_train, Y_train = get_features("semeval_train.txt", relations_list)
+model = build_and_train_model(X_features_train, Y_train, num_classes=len(relations_list))
+torch.save(model, 'trained-model.pt')
+# model = torch.load('trained-model.pt')
+
+# test model
+X_features_test, Y_test = get_features("semeval_test.txt", relations_list)
+test_loader = torch.utils.data.DataLoader(  # Reading the test set features in batches
+    dataset=CustomDataset(X_features_test, Y_test),
+    batch_size=32,
+    shuffle=False)
 
 # Test the model
 with torch.no_grad():
