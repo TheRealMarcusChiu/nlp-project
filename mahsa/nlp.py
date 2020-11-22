@@ -237,10 +237,13 @@ def test_model(model, X_features_test, Y_test):
 relations_list = get_relation_list("semeval_train.txt")
 
 # train or load model
-X_features_train, Y_train = get_features("semeval_train.txt", relations_list)
-model = build_and_train_model(X_features_train, Y_train, num_classes=len(relations_list))
-torch.save(model, 'trained-model.pt')
-# model = torch.load('trained-model.pt')
+load_model = True
+if load_model:
+    model = torch.load('trained-model.pt')
+else:
+    X_features_train, Y_train = get_features("semeval_train.txt", relations_list)
+    model = build_and_train_model(X_features_train, Y_train, num_classes=len(relations_list))
+    torch.save(model, 'trained-model.pt')
 
 # test model
 X_features_test, Y_test = get_features("semeval_test.txt", relations_list)
