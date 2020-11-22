@@ -42,13 +42,13 @@ class CustomDataset(torch.utils.data.Dataset):
 
 # possible_relations will extract all the distinct relations that exist in data set
 def possible_relations(data):
-    relation_types = {}
-    index = -1
+    relation_types = {'Other'}  # set data structure
     for i in range(len(data) - 1):
-        dict_key = data[i].split("\n")[1].strip()
-        if relation_types.get(dict_key) is None:
-            index += 1
-            relation_types[dict_key] = index
+        relation_types.add(data[i].split("\n")[1].strip())
+    relation_types.remove('Other')
+    relation_types = sorted(relation_types)  # returns list data structure
+    relation_types.append('Other')  # add 'Other' at end of list
+    relation_types = dict(zip(relation_types, range(len(relation_types))))
     return relation_types
 
 
@@ -213,25 +213,65 @@ def build_and_train_model(X_features_train, Y_train, num_classes):
     return model
 
 
-def test_model(model, X_features_test, Y_test):
-    test_loader = torch.utils.data.DataLoader(  # Reading the test set features in batches
-        dataset=CustomDataset(X_features_test, Y_test),
-        batch_size=32,
-        shuffle=False)
+def compute_accuracy(cm):
+    diagonal = np.array([cm[i][i] for i in range(len(cm[0]))])
+    return 100 * sum(diagonal) / cm.sum()
 
+
+def compute_macro_precision_recall_f_scores(cm):
+    # https://medium.com/data-science-in-your-pocket/calculating-precision-recall-for-multi-class-classification-9055931ee229
+    diagonal = np.array([cm[i][i] for i in range(len(cm[0]))])
+    macro_recall = np.mean(np.divide(diagonal, cm.sum(axis=0), out=np.zeros_like(diagonal), where=cm.sum(axis=0) != 0))
+    macro_precision = np.mean(
+        np.divide(diagonal, cm.sum(axis=1), out=np.zeros_like(diagonal), where=cm.sum(axis=1) != 0))
+    # https://tomaxent.com/2018/04/27/Micro-and-Macro-average-of-Precision-Recall-and-F-Score/
+    macro_f = 2 * macro_recall * macro_precision / (macro_recall + macro_precision)
+    return macro_recall, macro_precision, macro_f
+
+
+def compute_cm_without_direction(cm):
+    rows_even = cm[[i for i in range(0, len(cm), 2)], :]
+    rows_odd = cm[[i for i in range(1, len(cm), 2)], :]
+    rows_odd = np.vstack((rows_odd, np.zeros(len(rows_odd[0]))))
+    cmm = rows_even + rows_odd
+
+    cols_even = cmm[:, [i for i in range(0, len(cmm[0]), 2)]]
+    cols_odd = cmm[:, [i for i in range(1, len(cmm[0]), 2)]]
+    cols_odd = np.hstack((cols_odd, np.zeros(shape=(len(cols_even[0]), 1))))
+    return cols_even + cols_odd
+
+
+def test_model(model, X_features_test, Y_test, relations_list):
+    # compute confusion matrix
+    cm = np.zeros((len(relations_list), len(relations_list)))
     with torch.no_grad():
-        correct = 0
-        total = 0
-        for xTest, yTest in test_loader:
-            xTest = xTest.to(torch.float32)
-            yTest = yTest.to(torch.long)
-            outputs_test = model(xTest)
-            _, predicted = torch.max(outputs_test.data, 1)
-            total += yTest.size(0)
-            correct += (predicted == yTest[:, 0]).sum().item()
+        test_loader = torch.utils.data.DataLoader(  # Reading the test set features in batches
+            dataset=CustomDataset(X_features_test, Y_test),
+            batch_size=32,
+            shuffle=False)
+        for xs, ys in test_loader:
+            xs = xs.to(torch.float32)
+            ys = ys.to(torch.long)[:, 0]
+            _, predicted = torch.max(model(xs).data, 1)
+            for i in range(len(ys)):
+                y_pred = predicted[i].item()
+                y_gold = ys[i]
+                cm[y_pred, y_gold] = cm[y_pred, y_gold] + 1
 
-        print('Accuracy of the network on the 10000 test images: {} %'.format(
-            100 * correct / total))
+    # use confusion matrix to compute macro-(precision/recall/f)-scores
+    print('Accuracy: {}%'.format(compute_accuracy(cm)))
+
+    macro_recall, macro_precision, macro_f = compute_macro_precision_recall_f_scores(cm)
+    print('Macro Recall: {} (with direction)'.format(macro_recall))
+    print('Macro Precision: {} (with direction)'.format(macro_precision))
+    print('Macro F Score: {} (with direction)'.format(macro_f))
+
+    # compute confusion matrix (no direction distinction)
+    cmm = compute_cm_without_direction(cm)
+    macro_recall, macro_precision, macro_f = compute_macro_precision_recall_f_scores(cmm)
+    print('Macro Recall: {} (without direction)'.format(macro_recall))
+    print('Macro Precision: {} (without direction)'.format(macro_precision))
+    print('Macro F Score: {} (without direction)'.format(macro_f))
 
 
 relations_list = get_relation_list("semeval_train.txt")
@@ -247,4 +287,4 @@ else:
 
 # test model
 X_features_test, Y_test = get_features("semeval_test.txt", relations_list)
-test_model(model, X_features_test, Y_test)
+test_model(model, X_features_test, Y_test, relations_list)
