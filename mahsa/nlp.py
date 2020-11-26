@@ -4,6 +4,7 @@ import spacy
 import torch
 import torch.nn as nn
 import torch.utils.data
+import time
 
 nlp = spacy.load("en_core_web_sm")
 
@@ -241,7 +242,7 @@ def compute_cm_without_direction(cm):
     return cols_even + cols_odd
 
 
-def test_model(model, X_features_test, Y_test, relations_list):
+def predict_and_compute_confusion_matrix(model, X_features_test, Y_test, relations_list):
     # compute confusion matrix
     cm = np.zeros((len(relations_list), len(relations_list)))
     with torch.no_grad():
@@ -257,7 +258,10 @@ def test_model(model, X_features_test, Y_test, relations_list):
                 y_pred = predicted[i].item()
                 y_gold = ys[i]
                 cm[y_pred, y_gold] = cm[y_pred, y_gold] + 1
+    return cm
 
+
+def compute_scores(cm):
     # use confusion matrix to compute macro-(precision/recall/f)-scores
     print('Accuracy: {}%'.format(compute_accuracy(cm)))
 
@@ -286,5 +290,9 @@ else:
     torch.save(model, 'trained-model.pt')
 
 # test model
+start = time.time()
 X_features_test, Y_test = get_features("semeval_test.txt", relations_list)
-test_model(model, X_features_test, Y_test, relations_list)
+cm = predict_and_compute_confusion_matrix(model, X_features_test, Y_test, relations_list)
+end = time.time()
+print('prediction time for {} samples : {}'.format(len(Y_test), end - start))
+print('prediction time for 1 sample : {}'.format((end - start) / len(Y_test)))
