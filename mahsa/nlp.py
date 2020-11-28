@@ -420,6 +420,7 @@ end = time.time()
 print('prediction time for {} samples : {}'.format(len(Y_test), end - start))
 print('prediction time for 1 sample : {}'.format((end - start) / len(Y_test)))
 
+compute_scores(cm)
 
 
 

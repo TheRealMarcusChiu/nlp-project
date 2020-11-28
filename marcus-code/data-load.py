@@ -21,7 +21,9 @@ def load_data(file_path):
     return pd.DataFrame(data)
 
 
-df = load_data("../data/train.txt")
+df = load_data("../data/semeval_train.txt")
 
 print(df['sentences'][0])
 print(df['labels'][0])
+print('unique labels: ', df['labels'].unique())
+
