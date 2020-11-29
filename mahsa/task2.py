@@ -58,3 +58,4 @@ def Task2(input):
 # input = " With <e1> NAZA </e1> FC he won the <e2> Malaysia </e2> Premier League 2007-08 championship . "
 print("\n\nPlease enter the test sentence")
 input_test = input()
+Task2(input_test)
