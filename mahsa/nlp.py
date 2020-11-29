@@ -307,9 +307,9 @@ def build_and_train_model(X_features_train, Y_train, num_classes):
 
     # Hyper parameters
     hidden_size = 500
-    hidden_size2 = 250
+    hidden_size2 = 300
     num_epochs = 80
-    batch_size = 16
+    batch_size = 64
     learning_rate = 0.001
 
     train_loader = torch.utils.data.DataLoader(  # Reading the training set features in batches
@@ -412,7 +412,7 @@ def compute_scores(cm):
 relations_list = get_relation_list("semeval_train.txt")
 
 # train or load model
-load_model = False
+load_model = True
 if load_model:
     model = torch.load('trained-model.pt')
 else:
